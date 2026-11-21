@@ -2,6 +2,16 @@
 
 from app.schemas.auth import LoginRequest, LoginResponse, MeResponse, TokenUser
 from app.schemas.chat import AskRequest
+from app.schemas.chat_session import (
+    HistoryResponse,
+    MessageListResponse,
+    MessageResponse,
+    SessionCreateRequest,
+    SessionListResponse,
+    SessionPatchRequest,
+    SessionResponse,
+    SourceItem,
+)
 from app.schemas.document import DocumentListResponse, DocumentResponse
 from app.schemas.knowledge_base import (
     KbCreateRequest,
@@ -26,6 +36,14 @@ __all__ = [
     "MeResponse",
     "TokenUser",
     "AskRequest",
+    "HistoryResponse",
+    "MessageListResponse",
+    "MessageResponse",
+    "SessionCreateRequest",
+    "SessionListResponse",
+    "SessionPatchRequest",
+    "SessionResponse",
+    "SourceItem",
     "DocumentListResponse",
     "DocumentResponse",
     "KbCreateRequest",

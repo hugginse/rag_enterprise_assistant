@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api.routes import auth, chat, documents, knowledge_bases, stats, users
+from app.api.routes import auth, chat, chat_sessions, documents, knowledge_bases, stats, users
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(documents.router)
     app.include_router(stats.router)
     app.include_router(chat.router)
+    app.include_router(chat_sessions.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
