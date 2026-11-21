@@ -10,6 +10,7 @@ from app.schemas.knowledge_base import (
     KbResponse,
     KbUpdateRequest,
 )
+from app.schemas.stats import DashboardResponse, TrendPoint
 from app.schemas.user import (
     UserCreateRequest,
     UserListResponse,
@@ -31,6 +32,8 @@ __all__ = [
     "KbMemberResponse",
     "KbResponse",
     "KbUpdateRequest",
+    "DashboardResponse",
+    "TrendPoint",
     "UserCreateRequest",
     "UserListResponse",
     "UserPasswordRequest",
