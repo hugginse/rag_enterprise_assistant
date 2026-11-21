@@ -454,10 +454,49 @@ label select {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.session-item .s-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-item .s-actions {
+  display: none;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+.session-item:hover .s-actions,
+.session-item.active .s-actions {
+  display: inline-flex;
 }
 .session-item:hover,
 .session-item.active {
   background: var(--primary-soft);
+}
+.icon-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.3rem;
+  border-radius: 4px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+.icon-btn:hover {
+  background: #fff;
+  color: var(--text);
+}
+.msg-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.chat-layout .spacer {
+  flex: 1;
 }
 
 .chat-main {
