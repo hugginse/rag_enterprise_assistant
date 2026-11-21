@@ -239,6 +239,46 @@ label select {
 .login-card .muted {
   margin-top: 0;
 }
+.login-hint {
+  margin: 1rem 0 0;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+/* 密码显示切换 */
+.pw-wrap {
+  position: relative;
+  display: block;
+  margin-top: 0.35rem;
+}
+.pw-wrap input {
+  margin-top: 0;
+  padding-right: 3.4rem;
+  font-weight: 400;
+}
+.pw-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.3rem;
+  border-radius: 6px;
+  line-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.pw-toggle:hover {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.pw-toggle svg {
+  display: block;
+}
 
 /* ---------- 表格 ---------- */
 .table {

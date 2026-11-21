@@ -7,6 +7,15 @@
  * - SSE：fetch + ReadableStream 解析 event:/data: 帧
  */
 
+/** 开发期静态在 5173、API 在 8000；同源部署（#9）时为空前缀。 */
+export const API_BASE =
+  location.port === "5173" ? `${location.protocol}//${location.hostname}:8000` : "";
+
+function url(path) {
+  if (/^https?:\/\//i.test(path)) return path;
+  return API_BASE + (path.startsWith("/") ? path : `/${path}`);
+}
+
 export function getToken() {
   return localStorage.getItem("token");
 }
@@ -70,7 +79,7 @@ export async function apiFetch(path, options = {}) {
     }
   }
 
-  const resp = await fetch(path, { method, headers: finalHeaders, body: payload });
+  const resp = await fetch(url(path), { method, headers: finalHeaders, body: payload });
 
   if (resp.status === 401) {
     handle401();
@@ -117,7 +126,7 @@ export async function sseFetch(path, options = {}, onEvent) {
   }
 
   const payload = body == null ? undefined : typeof body === "string" ? body : JSON.stringify(body);
-  const resp = await fetch(path, { method, headers: finalHeaders, body: payload });
+  const resp = await fetch(url(path), { method, headers: finalHeaders, body: payload });
 
   if (resp.status === 401) {
     handle401();
