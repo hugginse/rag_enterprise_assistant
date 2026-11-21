@@ -1,4 +1,4 @@
-/** 对话页：会话栏 + KB 选择 + 流式问答（引用卡片 / 思考框 / 打字机）。 */
+/** 对话页：会话栏 + KB 选择 + 流式问答（引用卡片 / 思考框 / rAF 打字机）。 */
 
 import { apiFetch, sseFetch, showToast } from "../api.js";
 import { navigate } from "../router.js";
@@ -8,13 +8,8 @@ const state = {
   kbId: null,
   sessions: [],
   sessionId: null,
-  messages: [], // 已落库历史 {question, answer, sources}
+  messages: [],
   streaming: false,
-  // 流式缓冲（rAF 批量刷新）
-  pendingThinking: "",
-  pendingDelta: "",
-  thinkingOpen: true,
-  raf: 0,
 };
 
 export async function renderChat(container) {
@@ -38,23 +33,18 @@ export async function renderChat(container) {
         <div class="chat-layout">
           <section class="session-panel">
             <div class="head">
-              <strong>会话</strong>
-              <button class="btn btn-sm btn-primary" id="btn-new-session" type="button">新建</button>
+              <select id="kb-select" title="选择知识库"></select>
+              <button class="btn btn-sm btn-primary" id="btn-new-session" type="button">＋ 新会话</button>
             </div>
             <div class="session-list" id="session-list"></div>
           </section>
           <section class="chat-main">
-            <div class="chat-toolbar">
-              <label class="muted" for="kb-select" style="margin:0;font-weight:400">知识库</label>
-              <select id="kb-select"></select>
-              <span class="spacer"></span>
-            </div>
             <div class="chat-messages" id="chat-messages">
-              <div class="empty" id="chat-empty">选择或新建会话，开始提问</div>
+              <div class="empty">选择或新建会话，开始提问吧 👋</div>
             </div>
             <form class="chat-input" id="chat-form">
-              <textarea id="chat-question" rows="1" placeholder="输入问题，Enter 发送，Shift+Enter 换行"
-                        required></textarea>
+              <textarea id="chat-question" rows="2"
+                        placeholder="输入问题，Enter 发送，Shift+Enter 换行" required></textarea>
               <button class="btn btn-primary" id="btn-send" type="submit">发送</button>
             </form>
           </section>
@@ -63,19 +53,21 @@ export async function renderChat(container) {
     </div>
   `;
 
+  const $ = (sel) => container.querySelector(sel);
+
   const user = JSON.parse(localStorage.getItem("user") || "null");
-  const label = container.querySelector("#user-label");
+  const label = $("#user-label");
   if (label && user) label.textContent = `${user.nickname || user.username}（${user.role}）`;
-  const navAdmin = container.querySelector("#nav-admin");
+  const navAdmin = $("#nav-admin");
   if (navAdmin && user && user.role === "admin") navAdmin.hidden = false;
 
-  container.querySelector("#btn-logout").addEventListener("click", () => {
+  $("#btn-logout").addEventListener("click", () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     navigate("login");
   });
 
-  container.querySelector("#btn-new-session").addEventListener("click", async () => {
+  $("#btn-new-session").addEventListener("click", async () => {
     if (!state.kbId) {
       showToast("请先选择知识库", "error");
       return;
@@ -85,396 +77,379 @@ export async function renderChat(container) {
         method: "POST",
         body: { kb_id: Number(state.kbId), title: "新会话" },
       });
+      state.sessionId = s.id;
+      state.messages = [];
       await loadSessions();
-      selectSession(s.id);
+      renderMessages();
+      $("#chat-question").focus();
     } catch (e) {
       showToast(e.message, "error");
     }
   });
 
-  const form = container.querySelector("#chat-form");
-  const textarea = container.querySelector("#chat-question");
-  textarea.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      form.requestSubmit();
+  /* ---------- 知识库 ---------- */
+  async function loadKbs() {
+    const data = await apiFetch("/api/knowledge-bases");
+    state.kbs = data.items || [];
+    const sel = $("#kb-select");
+    if (state.kbs.length === 0) {
+      sel.innerHTML = `<option value="">（无可用知识库）</option>`;
+      state.kbId = null;
+      return;
     }
-  });
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    ask(textarea);
-  });
+    sel.innerHTML = state.kbs
+      .map((k) => `<option value="${k.id}">${escapeHtml(k.name)}</option>`)
+      .join("");
+    state.kbId = state.kbs[0].id;
+    sel.value = String(state.kbId);
+    await loadSessions();
+  }
 
-  const kbSelect = container.querySelector("#kb-select");
-  kbSelect.addEventListener("change", async () => {
-    state.kbId = Number(kbSelect.value);
+  $("#kb-select").addEventListener("change", async (e) => {
+    state.kbId = Number(e.target.value);
     state.sessionId = null;
     state.messages = [];
     renderMessages();
     await loadSessions();
   });
 
-  try {
-    await loadKbs();
-    await loadSessions();
-    if (state.sessions.length > 0) {
-      selectSession(state.sessions[0].id);
-    } else {
-      renderMessages();
+  /* ---------- 会话 ---------- */
+  async function loadSessions() {
+    const q = state.kbId ? `?kb_id=${state.kbId}` : "";
+    const data = await apiFetch(`/api/chat/sessions${q}`);
+    state.sessions = data.items || [];
+    renderSessionList();
+  }
+
+  function renderSessionList() {
+    const box = $("#session-list");
+    if (state.sessions.length === 0) {
+      box.innerHTML = `<div class="empty">暂无会话</div>`;
+      return;
     }
-  } catch (err) {
-    showToast(err.message || "加载失败", "error");
-    if (err.status === 401) return;
-  }
-}
-
-async function loadKbs() {
-  const data = await apiFetch("/api/knowledge-bases");
-  state.kbs = data.items || [];
-  const sel = document.getElementById("kb-select");
-  if (!sel) return;
-  if (state.kbs.length === 0) {
-    sel.innerHTML = `<option value="">（无可用知识库）</option>`;
-    state.kbId = null;
-    return;
-  }
-  sel.innerHTML = state.kbs
-    .map((k) => `<option value="${k.id}">${escapeHtml(k.name)}</option>`)
-    .join("");
-  state.kbId = state.kbs[0].id;
-  sel.value = String(state.kbId);
-}
-
-async function loadSessions() {
-  const q = state.kbId ? `?kb_id=${state.kbId}` : "";
-  const data = await apiFetch(`/api/chat/sessions${q}`);
-  state.sessions = data.items || [];
-  renderSessionList();
-}
-
-function renderSessionList() {
-  const el = document.getElementById("session-list");
-  if (!el) return;
-  if (state.sessions.length === 0) {
-    el.innerHTML = `<div class="empty">暂无会话</div>`;
-    return;
-  }
-  el.innerHTML = state.sessions
-    .map(
-      (s) => `
-      <div class="session-item ${s.id === state.sessionId ? "active" : ""}"
-           data-id="${s.id}" title="${escapeHtml(s.title)}">
-        <span class="s-title">${escapeHtml(s.title)}</span>
+    box.innerHTML = state.sessions
+      .map(
+        (s) => `
+      <div class="session-item ${s.id === state.sessionId ? "active" : ""}" data-id="${s.id}">
+        <span class="s-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</span>
         <span class="s-actions">
           <button type="button" class="icon-btn" data-act="rename" title="重命名">✎</button>
           <button type="button" class="icon-btn" data-act="del" title="删除">✕</button>
         </span>
       </div>`
-    )
-    .join("");
+      )
+      .join("");
 
-  el.querySelectorAll(".session-item").forEach((item) => {
-    const id = Number(item.dataset.id);
-    item.addEventListener("click", (e) => {
-      const act = e.target && e.target.dataset ? e.target.dataset.act : null;
-      if (act === "rename") {
+    box.querySelectorAll(".session-item").forEach((item) => {
+      const id = Number(item.dataset.id);
+      item.querySelector(".s-title").addEventListener("click", () => openSession(id));
+      item.querySelector('[data-act="rename"]').addEventListener("click", async (e) => {
         e.stopPropagation();
-        renameSession(id);
-        return;
-      }
-      if (act === "del") {
-        e.stopPropagation();
-        deleteSession(id);
-        return;
-      }
-      selectSession(id);
-    });
-  });
-}
-
-async function selectSession(id) {
-  state.sessionId = id;
-  renderSessionList();
-  try {
-    const data = await apiFetch(`/api/chat/sessions/${id}/messages`);
-    state.messages = (data.items || []).map((m) => ({
-      question: m.question,
-      answer: m.answer,
-      sources: m.sources || [],
-    }));
-  } catch (e) {
-    state.messages = [];
-    showToast(e.message, "error");
-  }
-  renderMessages();
-}
-
-async function renameSession(id) {
-  const cur = state.sessions.find((s) => s.id === id);
-  const title = window.prompt("新会话标题", cur ? cur.title : "");
-  if (!title || !title.trim()) return;
-  try {
-    await apiFetch(`/api/chat/sessions/${id}`, {
-      method: "PATCH",
-      body: { title: title.trim().slice(0, 64) },
-    });
-    await loadSessions();
-    showToast("已重命名", "success");
-  } catch (e) {
-    showToast(e.message, "error");
-  }
-}
-
-async function deleteSession(id) {
-  if (!window.confirm("删除该会话及其全部消息？")) return;
-  try {
-    await apiFetch(`/api/chat/sessions/${id}`, { method: "DELETE" });
-    if (state.sessionId === id) {
-      state.sessionId = null;
-      state.messages = [];
-      renderMessages();
-    }
-    await loadSessions();
-    showToast("已删除", "success");
-  } catch (e) {
-    showToast(e.message, "error");
-  }
-}
-
-function renderMessages() {
-  const box = document.getElementById("chat-messages");
-  if (!box) return;
-  if (state.messages.length === 0 && !state.streaming) {
-    box.innerHTML = `<div class="empty" id="chat-empty">选择或新建会话，开始提问</div>`;
-    return;
-  }
-  box.innerHTML = state.messages.map((m) => messageHtml(m)).join("");
-  // 流式占位
-  if (state.streaming) {
-    box.insertAdjacentHTML("beforeend", streamingPlaceholderHtml());
-  }
-  box.scrollTop = box.scrollHeight;
-}
-
-function messageHtml(m) {
-  return `
-    <div class="msg-block">
-      <div class="msg-user">${escapeHtml(m.question)}</div>
-      <div class="msg-assistant">
-        ${sourcesHtml(m.sources)}
-        ${escapeHtml(m.answer)}
-      </div>
-    </div>`;
-}
-
-function sourcesHtml(sources) {
-  if (!sources || sources.length === 0) return "";
-  const cards = sources
-    .map((s) => {
-      const pct = typeof s.score === "number" ? Math.round(s.score * 100) : null;
-      return `
-        <div class="source-card">
-          ${pct != null ? `<span class="score">${pct}%</span>` : ""}
-          <div class="file">${escapeHtml(s.file_name || "")}</div>
-          <div class="snippet">${escapeHtml(s.snippet || "")}</div>
-        </div>`;
-    })
-    .join("");
-  return `<div class="sources"><div class="muted" style="font-size:0.78rem">引用资料</div>${cards}</div>`;
-}
-
-function streamingPlaceholderHtml() {
-  const thinking = state.pendingThinking;
-  const delta = state.pendingDelta;
-  const thinkingBlock = thinking
-    ? `<details class="thinking-box" ${state.thinkingOpen ? "open" : ""} id="thinking-box">
-         <summary>思考过程</summary>
-         <div class="thinking-body" id="thinking-body">${escapeHtml(thinking)}</div>
-       </details>`
-    : `<div class="thinking-box" id="thinking-box"><summary>思考中…</summary>
-         <div class="thinking-body muted">正在思考…</div>
-       </div>`;
-  const answerBlock = delta
-    ? escapeHtml(delta)
-    : thinking
-      ? `<span class="muted">正在思考…</span>`
-      : `<span class="muted">正在思考…</span>`;
-  return `
-    <div class="msg-block" id="stream-block">
-      <div class="msg-assistant">
-        <div class="sources" id="stream-sources" hidden></div>
-        ${thinkingBlock}
-        <div id="stream-answer">${answerBlock}</div>
-      </div>
-    </div>`;
-}
-
-function schedulePaint() {
-  if (state.raf) return;
-  state.raf = requestAnimationFrame(() => {
-    state.raf = 0;
-    paintStream();
-  });
-}
-
-function paintStream() {
-  const block = document.getElementById("stream-block");
-  if (!block) return;
-  const box = document.getElementById("chat-messages");
-  const nearBottom =
-    !box || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
-
-  const thinkingEl = document.getElementById("thinking-body");
-  const thinkingBox = document.getElementById("thinking-box");
-  if (thinkingEl && state.pendingThinking) {
-    thinkingEl.textContent = state.pendingThinking;
-    if (thinkingBox) thinkingBox.scrollTop = thinkingBox.scrollHeight;
-    // 未显式收起时保持打开
-    if (state.thinkingOpen && thinkingBox && thinkingBox.tagName === "DETAILS") {
-      thinkingBox.open = true;
-    }
-  }
-  const answerEl = document.getElementById("stream-answer");
-  if (answerEl) {
-    answerEl.textContent = state.pendingDelta || "";
-    answerEl.classList.toggle("muted", !state.pendingDelta);
-    if (!state.pendingDelta) answerEl.textContent = "正在思考…";
-  }
-  if (nearBottom && box) box.scrollTop = box.scrollHeight;
-}
-
-async function ask(textarea) {
-  if (state.streaming) return;
-  const question = String(textarea.value || "").trim();
-  if (!question) return;
-  if (!state.kbId) {
-    showToast("请选择知识库", "error");
-    return;
-  }
-
-  // 无会话则自动创建
-  if (!state.sessionId) {
-    try {
-      const s = await apiFetch("/api/chat/sessions", {
-        method: "POST",
-        body: { kb_id: Number(state.kbId), title: question.slice(0, 20) },
-      });
-      state.sessionId = s.id;
-      await loadSessions();
-    } catch (e) {
-      showToast(e.message, "error");
-      return;
-    }
-  }
-
-  state.streaming = true;
-  state.pendingThinking = "";
-  state.pendingDelta = "";
-  state.thinkingOpen = true;
-  textarea.value = "";
-  const btn = document.getElementById("btn-send");
-  if (btn) btn.disabled = true;
-
-  // 先插入用户消息与流式占位
-  const box = document.getElementById("chat-messages");
-  const empty = document.getElementById("chat-empty");
-  if (empty) empty.remove();
-  box.insertAdjacentHTML(
-    "beforeend",
-    `<div class="msg-block"><div class="msg-user">${escapeHtml(question)}</div></div>` +
-      streamingPlaceholderHtml()
-  );
-  box.scrollTop = box.scrollHeight;
-
-  let sources = [];
-
-  try {
-    await sseFetch(
-      "/api/chat/ask",
-      {
-        method: "POST",
-        body: { question, kb_id: Number(state.kbId), session_id: state.sessionId },
-      },
-      (event, data) => {
-        if (event === "sources") {
-          sources = data.sources || [];
-          const el = document.getElementById("stream-sources");
-          if (el && sources.length) {
-            el.hidden = false;
-            el.innerHTML = sources
-              .map((s) => {
-                const pct = typeof s.score === "number" ? Math.round(s.score * 100) : null;
-                return `<div class="source-card">
-                  ${pct != null ? `<span class="score">${pct}%</span>` : ""}
-                  <div class="file">${escapeHtml(s.file_name || "")}</div>
-                  <div class="snippet">${escapeHtml(s.snippet || "")}</div>
-                </div>`;
-              })
-              .join("");
-          }
-        } else if (event === "thinking") {
-          state.pendingThinking += data.content || "";
-          schedulePaint();
-        } else if (event === "delta") {
-          state.pendingDelta += data.content || "";
-          schedulePaint();
-        } else if (event === "error") {
-          showToast(data.message || "问答失败", "error");
+        const cur = state.sessions.find((s) => s.id === id);
+        const title = window.prompt("重命名会话", cur ? cur.title : "");
+        if (!title || !title.trim()) return;
+        try {
+          await apiFetch(`/api/chat/sessions/${id}`, {
+            method: "PATCH",
+            body: { title: title.trim().slice(0, 64) },
+          });
+          await loadSessions();
+          showToast("已重命名", "success");
+        } catch (err) {
+          showToast(err.message, "error");
         }
-        // done 在循环外处理
-      }
-    );
-    // sseFetch 结束即 done（或 error 后结束）
-    await finalizeAsk(question, sources);
-  } catch (err) {
-    showToast(err.message || "请求失败", "error");
-    const sb = document.getElementById("stream-block");
-    if (sb) sb.remove();
-  } finally {
-    state.streaming = false;
-    if (btn) btn.disabled = false;
-    if (state.raf) {
-      cancelAnimationFrame(state.raf);
-      state.raf = 0;
-    }
-    try {
-      await loadSessions();
-    } catch {
-      /* ignore */
-    }
+      });
+      item.querySelector('[data-act="del"]').addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!window.confirm("删除该会话？消息记录将一并删除。")) return;
+        try {
+          await apiFetch(`/api/chat/sessions/${id}`, { method: "DELETE" });
+          if (state.sessionId === id) {
+            state.sessionId = null;
+            state.messages = [];
+            renderMessages();
+          }
+          await loadSessions();
+          showToast("已删除", "success");
+        } catch (err) {
+          showToast(err.message, "error");
+        }
+      });
+    });
   }
-}
 
-async function finalizeAsk(question, sources) {
-  // 用最新会话消息刷新（服务端已落库）
-  if (state.sessionId) {
+  async function openSession(id) {
+    state.sessionId = id;
+    renderSessionList();
     try {
-      const data = await apiFetch(`/api/chat/sessions/${state.sessionId}/messages`);
+      const data = await apiFetch(`/api/chat/sessions/${id}/messages`);
       state.messages = (data.items || []).map((m) => ({
         question: m.question,
         answer: m.answer,
         sources: m.sources || [],
+        thinking: null, // 思考不落库，仅会话内保留
       }));
-    } catch {
-      // 回退：本地拼一条
+    } catch (err) {
+      showToast(err.message, "error");
+      state.messages = [];
+    }
+    renderMessages(true);
+  }
+
+  /* ---------- 消息渲染 ---------- */
+  function renderMessages(scroll = false) {
+    const box = $("#chat-messages");
+    if (state.messages.length === 0 && !state.streaming) {
+      box.innerHTML = `<div class="empty">选择或新建会话，开始提问吧 👋</div>`;
+      return;
+    }
+    box.innerHTML = state.messages
+      .map(
+        (m) => `
+      <div class="msg-pair">
+        <div class="msg-user">${escapeHtml(m.question)}</div>
+        <div class="msg-assistant">
+          ${renderSources(m.sources)}
+          <div class="msg-answer">
+            ${m.thinking ? renderThinking(m.thinking) : ""}
+            <div class="answer-text">${formatAnswer(m.answer)}</div>
+          </div>
+        </div>
+      </div>`
+      )
+      .join("");
+    if (scroll) box.scrollTop = box.scrollHeight;
+  }
+
+  function renderThinking(text) {
+    return `
+      <details class="thinking-box" open>
+        <summary>🧠 思考过程</summary>
+        <div class="thinking-body">${escapeHtml(text)}</div>
+      </details>`;
+  }
+
+  function renderSources(sources) {
+    if (!sources || sources.length === 0) return "";
+    return `
+      <div class="sources">
+        <div class="sources-title">📎 引用来源（${sources.length}）</div>
+        <div class="source-cards">
+          ${sources
+            .map(
+              (s) => `
+            <details class="source-card">
+              <summary>
+                <span class="source-file">${escapeHtml(s.file_name || "未知文件")}</span>
+                <span class="source-score">${((s.score || 0) * 100).toFixed(1)}%</span>
+              </summary>
+              <div class="source-snippet">${escapeHtml(s.snippet || "")}</div>
+            </details>`
+            )
+            .join("")}
+        </div>
+      </div>`;
+  }
+
+  /* ---------- 提问（SSE） ---------- */
+  $("#chat-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (state.streaming) return;
+    const input = $("#chat-question");
+    const question = input.value.trim();
+    if (!question) return;
+    if (!state.kbId) {
+      showToast("请先选择知识库", "error");
+      return;
+    }
+
+    // 无会话则自动建
+    if (!state.sessionId) {
+      try {
+        const s = await apiFetch("/api/chat/sessions", {
+          method: "POST",
+          body: { kb_id: Number(state.kbId), title: question.slice(0, 20) },
+        });
+        state.sessionId = s.id;
+        await loadSessions();
+      } catch (err) {
+        showToast(err.message, "error");
+        return;
+      }
+    }
+
+    state.streaming = true;
+    const btn = $("#btn-send");
+    btn.disabled = true;
+    btn.textContent = "思考中…";
+    input.value = "";
+
+    const box = $("#chat-messages");
+    if (box.querySelector(".empty")) box.innerHTML = "";
+    const pair = document.createElement("div");
+    pair.className = "msg-pair streaming";
+    pair.innerHTML = `
+      <div class="msg-user">${escapeHtml(question)}</div>
+      <div class="msg-assistant">
+        <div class="sources-slot" id="live-sources" hidden></div>
+        <div class="msg-answer">
+          <details class="thinking-box" id="live-thinking" open hidden>
+            <summary>🧠 思考过程</summary>
+            <div class="thinking-body" id="live-thinking-body"></div>
+          </details>
+          <div class="answer-text" id="live-answer"><span class="thinking-placeholder">正在思考…</span><span class="cursor">▍</span></div>
+        </div>
+      </div>`;
+    box.appendChild(pair);
+    box.scrollTop = box.scrollHeight;
+
+    const liveSources = pair.querySelector("#live-sources");
+    const liveThinking = pair.querySelector("#live-thinking");
+    const liveThinkingBody = pair.querySelector("#live-thinking-body");
+    const liveAnswer = pair.querySelector("#live-answer");
+    let fullAnswer = "";
+    let fullThinking = "";
+    let sources = [];
+    let gotDone = false;
+
+    const stickToBottom = (el) =>
+      el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+
+    let rafPending = false;
+    const flushAnswer = () => {
+      rafPending = false;
+      if (fullThinking) {
+        liveThinking.hidden = false;
+        const stick = stickToBottom(liveThinkingBody);
+        liveThinkingBody.textContent = fullThinking;
+        if (stick) liveThinkingBody.scrollTop = liveThinkingBody.scrollHeight;
+      }
+      liveAnswer.innerHTML = fullAnswer
+        ? formatAnswer(fullAnswer) + `<span class="cursor">▍</span>`
+        : `<span class="thinking-placeholder">正在思考…</span><span class="cursor">▍</span>`;
+      box.scrollTop = box.scrollHeight;
+    };
+    const scheduleFlush = () => {
+      if (!rafPending) {
+        rafPending = true;
+        requestAnimationFrame(flushAnswer);
+      }
+    };
+
+    try {
+      await sseFetch(
+        "/api/chat/ask",
+        {
+          method: "POST",
+          body: { question, kb_id: Number(state.kbId), session_id: state.sessionId },
+        },
+        (event, data) => {
+          if (event === "sources") {
+            sources = data.sources || [];
+            if (sources.length) {
+              liveSources.hidden = false;
+              liveSources.innerHTML = renderSources(sources);
+            } else {
+              liveSources.hidden = true;
+              liveSources.innerHTML = "";
+            }
+          } else if (event === "thinking") {
+            fullThinking += data.content || "";
+            scheduleFlush();
+          } else if (event === "delta") {
+            fullAnswer += data.content || "";
+            scheduleFlush();
+          } else if (event === "error") {
+            showToast(data.message || "问答服务异常", "error");
+            liveAnswer.innerHTML = `<span class="error-text">${escapeHtml(
+              data.message || "问答服务异常"
+            )}</span>`;
+          }
+        }
+      );
+      // 流结束（正常 done 或截断）
+      gotDone = true;
       state.messages.push({
         question,
-        answer: state.pendingDelta,
+        answer: fullAnswer || "（无回答）",
         sources,
+        thinking: fullThinking || null,
       });
+      pair.classList.remove("streaming");
+      pair.innerHTML = `
+        <div class="msg-user">${escapeHtml(question)}</div>
+        <div class="msg-assistant">
+          ${renderSources(sources)}
+          <div class="msg-answer">
+            ${fullThinking ? renderThinking(fullThinking) : ""}
+            <div class="answer-text">${formatAnswer(fullAnswer)}</div>
+          </div>
+        </div>`;
+      box.scrollTop = box.scrollHeight;
+      try {
+        await loadSessions();
+      } catch {
+        /* ignore */
+      }
+    } catch (err) {
+      showToast(err.message || "请求失败", "error");
+      liveAnswer.innerHTML = `<span class="error-text">${escapeHtml(err.message || "请求失败")}</span>`;
+    } finally {
+      state.streaming = false;
+      btn.disabled = false;
+      btn.textContent = "发送";
+      if (rafPending) cancelAnimationFrame(rafPending);
+      box.scrollTop = box.scrollHeight;
+      void gotDone;
     }
-  } else {
-    state.messages.push({ question, answer: state.pendingDelta, sources });
+  });
+
+  $("#chat-question").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      $("#chat-form").requestSubmit();
+    }
+  });
+
+  /* ---------- init ---------- */
+  try {
+    await loadKbs();
+    renderMessages();
+  } catch (err) {
+    showToast(err.message, "error");
   }
-  state.pendingThinking = "";
-  state.pendingDelta = "";
-  renderMessages();
 }
 
 function escapeHtml(s) {
-  return String(s)
+  return String(s ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function formatAnswer(text) {
+  let html = escapeHtml(text);
+  // 先抽出代码块，避免误伤其中的方括号
+  const codes = [];
+  html = html.replace(/```([\s\S]*?)```/g, (_, c) => {
+    codes.push(c.trim());
+    return `\u0000CODE${codes.length - 1}\u0000`;
+  });
+  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  // 依据引用：[文件名.ext] 或 [文件名.ext #3] → 醒目徽章
+  html = html.replace(
+    /\[([^\[\]]+?\.(?:md|txt|pdf|docx))(?:\s*#\s*(\d+))?\]/gi,
+    (_, file, n) =>
+      `<span class="cite-ref" title="回答依据来源">📎 ${file}${n ? ` #${n}` : ""}</span>`
+  );
+  // 「参考资料」「依据」等引导词轻量强调
+  html = html.replace(
+    /(根据)?(参考资料|依据文件|依据资料)/g,
+    '<span class="cite-lead">$2</span>'
+  );
+  html = html.replace(/\n/g, "<br>");
+  html = html.replace(/\u0000CODE(\d+)\u0000/g, (_, i) => `<pre>${codes[Number(i)]}</pre>`);
+  return html;
 }
