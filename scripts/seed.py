@@ -49,9 +49,7 @@ def ensure_user(db, username: str, password: str, nickname: str, role: str) -> U
 
 
 def ensure_kb(db, name: str, creator_id: int) -> KnowledgeBase:
-    kb = db.execute(
-        select(KnowledgeBase).where(KnowledgeBase.name == name)
-    ).scalar_one_or_none()
+    kb = db.execute(select(KnowledgeBase).where(KnowledgeBase.name == name)).scalar_one_or_none()
     if kb is None:
         kb = KnowledgeBase(
             name=name,

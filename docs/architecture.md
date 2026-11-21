@@ -140,7 +140,9 @@ rag_enterprise_assistant/
 ```python
 class LLMProvider(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]: ...
-    def chat_stream(self, system: str, question: str, context: str) -> Iterator[tuple[str, str]]: ...
+    def chat_stream(
+        self, system: str, question: str, context: str
+    ) -> Iterator[tuple[str, str]]: ...
 ```
 
 - `chat_stream` 逐 token yield **`("thinking" | "delta", text)`** 元组：`thinking` = 模型思考过程（未启用思考时不产出），`delta` = 正式回答；Ollama 取 `message.thinking`，OpenAI 兼容端点取 `reasoning_content`

@@ -26,9 +26,7 @@ def _token_user(user: User) -> TokenUser:
 def login(body: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     user = db.execute(select(User).where(User.username == body.username)).scalar_one_or_none()
     if user is None or not verify_password(body.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
     if user.status == 0:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="账号已禁用")
     token = create_token(user.id, user.role)

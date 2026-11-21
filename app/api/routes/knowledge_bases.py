@@ -37,9 +37,7 @@ def _is_member(db: Session, kb_id: int, user: User) -> bool:
     if user.role == "admin":
         return True
     row = db.execute(
-        select(KbMember.id)
-        .where(KbMember.kb_id == kb_id, KbMember.user_id == user.id)
-        .limit(1)
+        select(KbMember.id).where(KbMember.kb_id == kb_id, KbMember.user_id == user.id).limit(1)
     ).first()
     return row is not None
 
@@ -127,9 +125,9 @@ def delete_kb(
     kb = _get_kb_or_404(db, kb_id)
 
     # 1. 物理文件（在删记录前收集 stored_name）
-    stored_names = db.execute(
-        select(Document.stored_name).where(Document.kb_id == kb_id)
-    ).scalars().all()
+    stored_names = (
+        db.execute(select(Document.stored_name).where(Document.kb_id == kb_id)).scalars().all()
+    )
     upload_dir = Path(settings.upload_dir)
 
     try:
