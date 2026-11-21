@@ -1,9 +1,18 @@
-"""文档上传、列表与删除（M1：不向量化，status 恒为 pending）。"""
+"""文档上传、列表与删除：落盘→建 pending→立即返回→后台向量化。"""
 
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -13,6 +22,7 @@ from app.core.security import admin_required, login_required
 from app.db import get_db
 from app.models import Document, User
 from app.schemas import DocumentListResponse, DocumentResponse
+from app.services.ingest import ingest_document_by_id
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -65,6 +75,7 @@ def list_documents(
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     kb_id: int = Form(...),
     file: UploadFile = File(...),
     user: User = Depends(admin_required),
@@ -102,13 +113,16 @@ async def upload_document(
         stored_name=stored_name,
         file_type=ext.lstrip("."),
         file_size=len(content),
-        status="pending",  # M1 恒为 pending，不接向量化
+        status="pending",
         chunk_count=0,
         created_by=user.id,
     )
     db.add(doc)
     db.commit()
     db.refresh(doc)
+
+    # 立即返回 pending，后台处理
+    background_tasks.add_task(ingest_document_by_id, doc.id)
     return _doc_to_response(doc)
 
 
@@ -147,9 +161,9 @@ def delete_document(
     except OSError:
         pass
 
-    # Chroma 分块清理：M2 接通，M1 容忍
+    # Chroma 分块清理
     try:
-        from app.services.vector import delete_doc  # 延迟导入
+        from app.services.vector import delete_doc
 
         delete_doc(kb_id, doc_id)
     except Exception:

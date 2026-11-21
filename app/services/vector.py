@@ -53,7 +53,7 @@ def delete_doc(kb_id: int, doc_id: int) -> None:
         collection = _client().get_collection(f"kb_{kb_id}")
     except Exception:
         return
-    collection.delete(filter={"doc_id": doc_id})
+    collection.delete(where={"doc_id": doc_id})
 
 
 def delete_collection(kb_id: int) -> None:

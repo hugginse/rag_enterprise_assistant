@@ -1,4 +1,4 @@
-"""幂等种子：admin/user 账号、示例知识库、seed_docs 下 12 份文档（M1 状态 pending）。
+"""幂等种子：admin/user 账号、示例知识库、seed_docs 下 12 份文档并触发入库。
 
 用法：uv run python scripts/seed.py
 """
@@ -122,6 +122,25 @@ def seed_documents(db, kb_id: int, creator_id: int) -> None:
         print(f"[docs] + {path.relative_to(SEED_DOCS_DIR)} → pending")
 
     print(f"[docs] 新增 {created}，跳过 {skipped}")
+
+    # 对 pending 触发入库；completed 跳过（幂等）
+    from app.services.ingest import ingest_document_by_id
+
+    pending = (
+        db.execute(select(Document).where(Document.kb_id == kb_id, Document.status == "pending"))
+        .scalars()
+        .all()
+    )
+    for doc in pending:
+        print(f"[ingest] {doc.filename} ...")
+        ingest_document_by_id(doc.id)
+        db.expire_all()
+        doc2 = db.get(Document, doc.id)
+        print(
+            f"[ingest] {doc.filename} → {doc2.status}"
+            + (f" ({doc2.error_msg})" if doc2.error_msg else "")
+        )
+    print(f"[ingest] 处理 {len(pending)} 份 pending")
 
 
 def main() -> None:
