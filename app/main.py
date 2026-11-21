@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 
-from app.api.routes import auth, knowledge_bases, users
+from app.api.routes import auth, documents, knowledge_bases, users
 
 
 def create_app() -> FastAPI:
@@ -15,6 +15,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(knowledge_bases.router)
+    app.include_router(documents.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
