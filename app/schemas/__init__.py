@@ -1,6 +1,14 @@
 """Pydantic 请求/响应模型。"""
 
 from app.schemas.auth import LoginRequest, LoginResponse, MeResponse, TokenUser
+from app.schemas.knowledge_base import (
+    KbCreateRequest,
+    KbListResponse,
+    KbMemberAddRequest,
+    KbMemberResponse,
+    KbResponse,
+    KbUpdateRequest,
+)
 from app.schemas.user import (
     UserCreateRequest,
     UserListResponse,
@@ -14,6 +22,12 @@ __all__ = [
     "LoginResponse",
     "MeResponse",
     "TokenUser",
+    "KbCreateRequest",
+    "KbListResponse",
+    "KbMemberAddRequest",
+    "KbMemberResponse",
+    "KbResponse",
+    "KbUpdateRequest",
     "UserCreateRequest",
     "UserListResponse",
     "UserPasswordRequest",
