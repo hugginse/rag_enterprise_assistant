@@ -3,13 +3,18 @@
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import auth, chat, chat_sessions, documents, knowledge_bases, stats, users
 
 logger = logging.getLogger(__name__)
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
 @asynccontextmanager
@@ -30,6 +35,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
 
+class NoCacheStaticFiles(StaticFiles):
+    """静态资源一律 no-cache，便于开发与部署后立即生效。"""
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="rag_enterprise_assistant",
@@ -38,7 +52,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # 本地前端分端口联调（如 5173）；M3 #9 同源挂载后可收紧
+    # 开发期分端口联调（5173）保留；同源 8000 访问不依赖 CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -58,6 +72,18 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    # 静态资源：/static/* → static/ 目录，no-cache
+    app.mount(
+        "/static",
+        NoCacheStaticFiles(directory=str(STATIC_DIR)),
+        name="static",
+    )
+
+    @app.get("/", include_in_schema=False)
+    def index() -> FileResponse:
+        """SPA 入口；hash 路由无需其它 fallback。"""
+        return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
     return app
 
