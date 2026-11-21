@@ -653,6 +653,60 @@ label select {
   flex: 1;
 }
 
+/* ---------- 文档管理工具栏 ---------- */
+.docs-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  align-items: stretch;
+  margin-bottom: 1rem;
+}
+.docs-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+.docs-toolbar .field-label,
+.docs-pager .field-label {
+  margin: 0;
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.docs-toolbar select,
+.docs-pager select {
+  width: auto;
+  min-width: 140px;
+  margin: 0;
+}
+.docs-toolbar .btn {
+  align-self: center;
+}
+.upload-hint {
+  font-size: 0.8rem;
+}
+.docs-pager {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 1rem;
+  justify-content: flex-end;
+}
+.ops-cell {
+  white-space: nowrap;
+}
+.ops-cell .btn + .btn {
+  margin-left: 0.35rem;
+}
+.err-cell {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---------- 历史列表 ---------- */
 .history-item {
   padding: 0.9rem 0.25rem;
