@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rag
+          POSTGRES_PASSWORD: rag123
+          POSTGRES_DB: rag_enterprise
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rag -d rag_enterprise"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+psycopg2://rag:rag123@localhost:5432/rag_enterprise_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create test database
+        run: |
+          PGPASSWORD=rag123 psql -h localhost -U rag -d rag_enterprise \
+            -c "CREATE DATABASE rag_enterprise_test;"
+        env:
+          PGPASSWORD: rag123
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Ruff check
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Pytest
+        # RAG 全 mock，不依赖 Ollama
+        run: uv run pytest -q
