@@ -81,15 +81,15 @@ function renderTable() {
     <table class="table">
       <thead>
         <tr>
-          <th>ID</th><th>名称</th><th>描述</th><th>状态</th><th>创建时间</th><th>操作</th>
+          <th>序号</th><th>名称</th><th>描述</th><th>状态</th><th>创建时间</th><th>操作</th>
         </tr>
       </thead>
       <tbody>
         ${state.kbs
           .map(
-            (k) => `
+            (k, i) => `
           <tr>
-            <td>${k.id}</td>
+            <td>${i + 1}</td>
             <td>${escapeHtml(k.name)}</td>
             <td class="muted">${escapeHtml(k.description || "")}</td>
             <td>${k.status === 1 ? '<span class="badge badge-completed">启用</span>' : '<span class="badge badge-failed">停用</span>'}</td>

@@ -146,8 +146,9 @@ function renderList() {
     return;
   }
 
+  const offset = (state.page - 1) * PAGE_SIZE;
   list.innerHTML = state.items
-    .map((m) => {
+    .map((m, i) => {
       const when = m.created_at ? new Date(m.created_at).toLocaleString("zh-CN") : "";
       const sources = m.sources || [];
       const files = [...new Set(sources.map((s) => s.file_name).filter(Boolean))];
@@ -159,7 +160,7 @@ function renderList() {
           <div class="history-meta muted">
             <span>${when}</span>
             <span>·</span>
-            <span>#${m.id}</span>
+            <span>#${offset + i + 1}</span>
             ${files.length ? `<span style="margin-left:auto">${fileTags}</span>` : ""}
           </div>
           <div class="history-q"><strong>问：</strong>${escapeHtml(m.question)}</div>

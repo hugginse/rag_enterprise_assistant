@@ -220,6 +220,7 @@ function renderTable() {
   if (next) next.disabled = state.page * state.pageSize >= total;
 
   const rows = pageDocs();
+  const offset = (state.page - 1) * state.pageSize;
   const allChecked = rows.length > 0 && rows.every((d) => state.selected.has(d.id));
 
   el.innerHTML = `
@@ -230,13 +231,13 @@ function renderTable() {
             <input type="checkbox" id="check-all" ${allChecked ? "checked" : ""}
                    title="全选本页" style="width:auto;margin:0" />
           </th>
-          <th>ID</th><th>文件名</th><th>类型</th><th>大小</th><th>状态</th>
+          <th>序号</th><th>文件名</th><th>类型</th><th>大小</th><th>状态</th>
           <th>分块</th><th>错误</th><th>操作</th>
         </tr>
       </thead>
       <tbody>
         ${rows
-          .map((d) => {
+          .map((d, i) => {
             const badge =
               d.status === "completed"
                 ? "badge-completed"
@@ -254,7 +255,7 @@ function renderTable() {
                        ${state.selected.has(d.id) ? "checked" : ""}
                        style="width:auto;margin:0" />
               </td>
-              <td>${d.id}</td>
+              <td>${offset + i + 1}</td>
               <td>${escapeHtml(d.filename)}</td>
               <td>${escapeHtml(d.file_type)}</td>
               <td class="muted">${formatSize(d.file_size)}</td>

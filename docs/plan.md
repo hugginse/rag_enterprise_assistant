@@ -97,8 +97,9 @@ find seed_docs -type f | wc -l                              # 必须 = 12
 9. **`feat: 管理端统计接口`**
    - `app/api/routes/stats.py`：GET `/api/stats/dashboard` → `{users,kbs,documents,messages, trend:[{date,count}]}` 近 7 天（admin）
 
-10. **`feat: 种子脚本（双账号、示例库、12 份文档）`**
-    - `scripts/seed.py`（幂等：同 kb 同 filename 跳过；**递归扫描 seed_docs/**）：`admin/admin123`、`user/user123`；知识库「公司规章制度」；两用户均入成员；12 份文档入库（M1 状态 pending）
+10. **`feat: 种子脚本（双账号、按文件夹三库、12 份文档）`**
+    - `scripts/seed.py`（幂等：同 kb 同 filename 跳过）：`admin/admin123`、`user/user123`；**按 `seed_docs/` 一级子文件夹各建一个知识库**（文件夹名 = 库名：公司规章制度 / 技术开发规范 / 产品使用指南），各库只导入本文件夹文档；两用户均入全部库成员；12 份文档入库（M1 状态 pending）
+    - 本地直跑若 `.env` 指向 `host.docker.internal`，需覆盖 `OLLAMA_BASE_URL=http://localhost:11434`；清库可用 `scripts/wipe_documents.py`（删文档记录 + uploads + Chroma）
 
 11. **`test: 认证、权限矩阵与文档接口测试`**
     - `tests/conftest.py`（测试库 fixture：alembic upgrade head；应用工厂）、`test_auth.py`（登录/过期/错误密码/**禁用用户 401**）、`test_knowledge_base.py`（**权限矩阵**：非成员 403/404、admin 全过、授权后可见）、`test_documents.py`（上传/类型/超限/删除）、`test_stats.py`
@@ -108,7 +109,7 @@ find seed_docs -type f | wc -l                              # 必须 = 12
 ```bash
 uv sync && uv run ruff check .                # 0 error
 docker compose up -d db && uv run alembic upgrade head
-uv run python scripts/seed.py
+uv run python scripts/seed.py                 # 3 个知识库 × 各 4 份 = 12
 uv run uvicorn app.main:app --reload          # 另开终端
 curl -s localhost:8000/health                 # {"status":"ok"}
 curl -s -X POST localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin123"}'   # 返回 token
@@ -164,7 +165,7 @@ find seed_docs -type f | wc -l                # = 12
 ```bash
 uv run ruff check . && uv run pytest -q       # 全绿（含 test_parser）
 uv run uvicorn app.main:app --reload
-# 1) 重跑 uv run python scripts/seed.py（把 pending 种子向量化）
+# 1) 重跑 uv run python scripts/seed.py（把 pending 种子向量化；本地需 OLLAMA_BASE_URL=http://localhost:11434）
 #    或 admin 上传 → 立即 pending；轮询 GET /api/documents/{id} 直到 completed（记录耗时）
 # 2) user 账号 SSE 问答：
 #    curl -N -X POST localhost:8000/api/chat/ask -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \

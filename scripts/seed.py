@@ -1,4 +1,4 @@
-"""幂等种子：admin/user 账号、示例知识库、seed_docs 下 12 份文档并触发入库。
+"""幂等种子：admin/user 账号、按 seed_docs 子文件夹各建一个知识库并导入对应文档。
 
 用法：uv run python scripts/seed.py
 """
@@ -19,7 +19,6 @@ from app.db import SessionLocal  # noqa: E402
 from app.models import Document, KbMember, KnowledgeBase, User  # noqa: E402
 
 SEED_DOCS_DIR = ROOT / "seed_docs"
-KB_NAME = "公司规章制度"
 UPLOAD_DIR = ROOT / "uploads"
 
 ALLOWED_EXT = {".txt", ".md", ".pdf", ".docx"}
@@ -48,12 +47,12 @@ def ensure_user(db, username: str, password: str, nickname: str, role: str) -> U
     return user
 
 
-def ensure_kb(db, name: str, creator_id: int) -> KnowledgeBase:
+def ensure_kb(db, name: str, creator_id: int, description: str) -> KnowledgeBase:
     kb = db.execute(select(KnowledgeBase).where(KnowledgeBase.name == name)).scalar_one_or_none()
     if kb is None:
         kb = KnowledgeBase(
             name=name,
-            description="种子示例知识库：公司规章制度",
+            description=description,
             created_by=creator_id,
             status=1,
         )
@@ -78,16 +77,16 @@ def ensure_member(db, kb_id: int, user_id: int) -> None:
         print(f"[member] user {user_id} 已在 kb {kb_id}")
 
 
-def seed_documents(db, kb_id: int, creator_id: int) -> None:
-    """递归扫描 seed_docs/，同 kb 同 filename 跳过；M1 状态恒为 pending。"""
-    if not SEED_DOCS_DIR.is_dir():
-        print(f"[docs] 未找到 {SEED_DOCS_DIR}", file=sys.stderr)
+def seed_documents(db, kb_id: int, source_dir: Path, creator_id: int) -> None:
+    """递归扫描 source_dir/，同 kb 同 filename 跳过；创建 pending 并触发入库。"""
+    if not source_dir.is_dir():
+        print(f"[docs] 未找到 {source_dir}", file=sys.stderr)
         sys.exit(1)
 
     files = sorted(
-        p for p in SEED_DOCS_DIR.rglob("*") if p.is_file() and p.suffix.lower() in ALLOWED_EXT
+        p for p in source_dir.rglob("*") if p.is_file() and p.suffix.lower() in ALLOWED_EXT
     )
-    print(f"[docs] 扫描到 {len(files)} 份可入库文件")
+    print(f"[docs] {source_dir.name}: 扫描到 {len(files)} 份可入库文件")
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     created = 0
@@ -112,14 +111,14 @@ def seed_documents(db, kb_id: int, creator_id: int) -> None:
             stored_name=stored_name,
             file_type=path.suffix.lower().lstrip("."),
             file_size=stored_path.stat().st_size,
-            status="pending",  # M1 不向量化
+            status="pending",
             chunk_count=0,
             created_by=creator_id,
         )
         db.add(doc)
         db.commit()
         created += 1
-        print(f"[docs] + {path.relative_to(SEED_DOCS_DIR)} → pending")
+        print(f"[docs] + {path.relative_to(source_dir)} → pending")
 
     print(f"[docs] 新增 {created}，跳过 {skipped}")
 
@@ -143,15 +142,35 @@ def seed_documents(db, kb_id: int, creator_id: int) -> None:
     print(f"[ingest] 处理 {len(pending)} 份 pending")
 
 
+def discover_kb_dirs() -> list[Path]:
+    """seed_docs 下一级子目录即知识库（文件夹名 = 知识库名）。"""
+    if not SEED_DOCS_DIR.is_dir():
+        print(f"[docs] 未找到 {SEED_DOCS_DIR}", file=sys.stderr)
+        sys.exit(1)
+    dirs = sorted(p for p in SEED_DOCS_DIR.iterdir() if p.is_dir())
+    if not dirs:
+        print("[docs] seed_docs 下没有子文件夹，无法按文件夹建库", file=sys.stderr)
+        sys.exit(1)
+    return dirs
+
+
 def main() -> None:
     db = SessionLocal()
     try:
         admin = ensure_user(db, "admin", "admin123", "管理员", "admin")
         user = ensure_user(db, "user", "user123", "普通用户", "user")
-        kb = ensure_kb(db, KB_NAME, admin.id)
-        ensure_member(db, kb.id, admin.id)
-        ensure_member(db, kb.id, user.id)
-        seed_documents(db, kb.id, admin.id)
+        kb_dirs = discover_kb_dirs()
+        print(f"[seed] 按文件夹建库：{', '.join(d.name for d in kb_dirs)}")
+        for source_dir in kb_dirs:
+            kb = ensure_kb(
+                db,
+                name=source_dir.name,
+                creator_id=admin.id,
+                description=f"种子知识库：{source_dir.name}（对应 seed_docs/{source_dir.name}/）",
+            )
+            ensure_member(db, kb.id, admin.id)
+            ensure_member(db, kb.id, user.id)
+            seed_documents(db, kb.id, source_dir, admin.id)
         print("seed 完成")
     finally:
         db.close()

@@ -107,16 +107,17 @@ function renderTable() {
     <table class="table">
       <thead>
         <tr>
-          <th>ID</th><th>用户名</th><th>昵称</th><th>角色</th><th>状态</th><th>创建时间</th><th>操作</th>
+          <th>序号</th><th>用户名</th><th>昵称</th><th>角色</th><th>状态</th><th>创建时间</th><th>操作</th>
         </tr>
       </thead>
       <tbody>
         ${state.items
-          .map((u) => {
+          .map((u, i) => {
             const isSelf = me && u.id === me.id;
+            const displayNo = (state.page - 1) * state.pageSize + i + 1;
             return `
             <tr>
-              <td>${u.id}</td>
+              <td>${displayNo}</td>
               <td>${escapeHtml(u.username)}</td>
               <td>${escapeHtml(u.nickname || "")}</td>
               <td><span class="badge ${u.role === "admin" ? "badge-admin" : "badge-user"}">${u.role}</span></td>

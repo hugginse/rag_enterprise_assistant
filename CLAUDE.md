@@ -2,7 +2,7 @@
 
 ## 项目定位
 
-企业级知识库问答系统（RAG），个人求职作品，交付物为 **GitHub 公开仓库 `rag_enterprise_assistant`**。
+企业级知识库问答系统（RAG），交付物为 **GitHub 公开仓库 `rag_enterprise_assistant`**。
 本文件与 `docs/plan.md`、`docs/architecture.md` **自包含**：不需要蓝本源码、不需要其他任何外部材料即可完整开工。
 
 ## 文档地图（开工前必读，顺序固定）
